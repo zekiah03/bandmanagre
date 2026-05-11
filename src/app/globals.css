@@ -99,6 +99,7 @@ h1 {
 .summaryCard,
 .financeCard,
 .formCard,
+.calendarCard,
 .metricGrid > div,
 .row,
 .taskRow,
@@ -169,6 +170,162 @@ h1 {
 
 .metricGrid strong {
   font-size: 18px;
+}
+
+.calendarCard {
+  padding: 12px;
+}
+
+.calendarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.calendarHeader button {
+  width: 48px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.calendarHeader div {
+  min-width: 0;
+  text-align: center;
+}
+
+.calendarHeader span {
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.calendarHeader h2 {
+  font-size: 17px;
+}
+
+.calendarLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.legend,
+.calendarPill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 5px;
+  padding: 3px 5px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.legend.meeting,
+.calendarPill.meeting {
+  background: #dff3ff;
+  color: #126a90;
+}
+
+.legend.rehearsal,
+.calendarPill.rehearsal {
+  background: #e0f4f1;
+  color: #00746e;
+}
+
+.legend.live,
+.calendarPill.live {
+  background: #ffe8cd;
+  color: #9a5b00;
+}
+
+.calendarPill.recording,
+.calendarPill.other {
+  background: #eceff3;
+  color: #59636c;
+}
+
+.legend.candidate,
+.calendarPill.candidate {
+  background: #f4e8ff;
+  color: #7047a8;
+}
+
+.nextMeetingHint {
+  margin-bottom: 10px;
+  border: 1px solid #d8c8f4;
+  border-radius: 8px;
+  padding: 9px;
+  background: #fbf7ff;
+}
+
+.nextMeetingHint strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #7047a8;
+  font-size: 12px;
+}
+
+.nextMeetingHint p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.calendarWeek,
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.calendarWeek {
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.calendarWeek span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.calendarGrid {
+  gap: 4px;
+}
+
+.calendarDay {
+  min-width: 0;
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px;
+  background: #fff;
+}
+
+.mutedDay {
+  opacity: 0.42;
+}
+
+.dayNumber {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.dayItems {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .sectionTitle {

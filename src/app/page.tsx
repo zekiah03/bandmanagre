@@ -24,6 +24,8 @@ const kindLabels = {
   other: "その他"
 };
 
+const weekLabels = ["日", "月", "火", "水", "木", "金", "土"];
+
 export default function Home() {
   const [session, setSession] = useState<Session | null>(null);
   const [view, setView] = useState<ViewState>("loading");
@@ -36,6 +38,7 @@ export default function Home() {
   const [minutes, setMinutes] = useState<MeetingMinute[]>([]);
   const [polls, setPolls] = useState<SchedulePoll[]>([]);
   const [availability, setAvailability] = useState<AvailabilitySlot[]>([]);
+  const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -434,6 +437,13 @@ export default function Home() {
 
         {tab === "schedule" && (
           <>
+            <CalendarView
+              currentDate={calendarDate}
+              events={events}
+              polls={polls}
+              availability={availability}
+              onMonthChange={setCalendarDate}
+            />
             <Panel title="日程調整">
               <SchedulePollForm action={addSchedulePoll} />
               <AvailabilityForm action={addAvailability} polls={polls} />
@@ -572,6 +582,82 @@ function SectionTitle({ title, action }: { title: string; action?: string }) {
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return <section><SectionTitle title={title} />{children}</section>;
+}
+
+function CalendarView({
+  currentDate,
+  events,
+  polls,
+  availability,
+  onMonthChange
+}: {
+  currentDate: Date;
+  events: EventItem[];
+  polls: SchedulePoll[];
+  availability: AvailabilitySlot[];
+  onMonthChange: (date: Date) => void;
+}) {
+  const monthStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+  const cells = buildCalendarCells(monthStart);
+  const monthLabel = new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long" }).format(monthStart);
+  const pollCandidates = polls.flatMap((poll) =>
+    buildCandidates(availability.filter((slot) => slot.poll_id === poll.id)).map((candidate) => ({ ...candidate, poll }))
+  );
+  const nextMeetingCandidate = pollCandidates
+    .filter((candidate) => candidate.poll.kind === "meeting")
+    .sort((a, b) => b.members.length - a.members.length || new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())[0];
+
+  return (
+    <section className="calendarCard">
+      <div className="calendarHeader">
+        <button onClick={() => onMonthChange(new Date(monthStart.getFullYear(), monthStart.getMonth() - 1, 1))}>前月</button>
+        <div>
+          <span>カレンダー</span>
+          <h2>{monthLabel}</h2>
+        </div>
+        <button onClick={() => onMonthChange(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1))}>次月</button>
+      </div>
+
+      <div className="calendarLegend">
+        <span className="legend meeting">会議</span>
+        <span className="legend rehearsal">練習</span>
+        <span className="legend live">ライブ</span>
+        <span className="legend candidate">候補</span>
+      </div>
+
+      {nextMeetingCandidate && (
+        <div className="nextMeetingHint">
+          <strong>次の会議候補</strong>
+          <p>{formatDateRange(nextMeetingCandidate.startsAt, nextMeetingCandidate.endsAt)} / {nextMeetingCandidate.members.length}人参加可</p>
+        </div>
+      )}
+
+      <div className="calendarWeek">
+        {weekLabels.map((label) => <span key={label}>{label}</span>)}
+      </div>
+      <div className="calendarGrid">
+        {cells.map((cell) => {
+          const dayEvents = events.filter((event) => isSameLocalDay(event.starts_at, cell.date));
+          const dayCandidates = pollCandidates.filter((candidate) => isSameLocalDay(candidate.startsAt, cell.date));
+          return (
+            <div className={`calendarDay ${cell.inMonth ? "" : "mutedDay"}`} key={cell.key}>
+              <span className="dayNumber">{cell.date.getDate()}</span>
+              <div className="dayItems">
+                {dayEvents.slice(0, 3).map((event) => (
+                  <span className={`calendarPill ${event.kind}`} key={event.id}>{kindLabels[event.kind]}</span>
+                ))}
+                {dayCandidates.slice(0, 2).map((candidate) => (
+                  <span className="calendarPill candidate" key={`${candidate.poll.id}_${candidate.key}`}>
+                    候補 {candidate.members.length}人
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function SchedulePollForm({ action }: { action: (formData: FormData) => void }) {
@@ -929,6 +1015,33 @@ function toDateTimeLocal(value: string) {
   const date = new Date(value);
   const offset = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function localDateKey(value: Date | string) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isSameLocalDay(value: string, date: Date) {
+  return localDateKey(value) === localDateKey(date);
+}
+
+function buildCalendarCells(monthStart: Date) {
+  const first = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return {
+      date,
+      key: localDateKey(date),
+      inMonth: date.getMonth() === monthStart.getMonth()
+    };
+  });
 }
 
 function memberName(members: Member[], memberId: string) {
