@@ -69,7 +69,7 @@ export default function Home() {
   }, [money]);
 
   const nextEvent = events[0];
-  const myMember = members.find((member) => member.user_id === session?.user.id);
+  const myMember = members.find((member) => member.user_id === session?.user.id || lower(member.email) === lower(session?.user.email));
   const myTasks = tasks.filter((task) => !task.assignee_member_id || task.assignee_member_id === myMember?.id);
 
   async function loadBand(user: User) {
@@ -107,7 +107,23 @@ export default function Home() {
       supabase.from("stm_availability_slots").select("*").eq("band_id", bandId).order("starts_at", { ascending: true })
     ]);
 
-    setMembers((memberResult.data ?? []) as Member[]);
+    let loadedMembers = (memberResult.data ?? []) as Member[];
+    const invitedMember = loadedMembers.find((member) => !member.user_id && lower(member.email) === lower(session?.user.email));
+
+    if (invitedMember) {
+      const { data: claimedMember } = await supabase
+        .from("stm_members")
+        .update({ user_id: userId, email: session?.user.email ?? invitedMember.email })
+        .eq("id", invitedMember.id)
+        .select()
+        .single();
+
+      if (claimedMember) {
+        loadedMembers = loadedMembers.map((member) => member.id === invitedMember.id ? claimedMember as Member : member);
+      }
+    }
+
+    setMembers(loadedMembers);
     setEvents((eventResult.data ?? []) as EventItem[]);
     setTasks((taskResult.data ?? []) as TaskItem[]);
     setMoney((moneyResult.data ?? []) as MoneyItem[]);
@@ -115,8 +131,8 @@ export default function Home() {
     setPolls((pollResult.data ?? []) as SchedulePoll[]);
     setAvailability((availabilityResult.data ?? []) as AvailabilitySlot[]);
 
-    const hasProfile = (memberResult.data ?? []).some((member) => member.user_id === userId);
-    if (!hasProfile) setMessage("このバンドのメンバー情報を確認できませんでした。");
+    const hasProfile = loadedMembers.some((member) => member.user_id === userId || lower(member.email) === lower(session?.user.email));
+    if (!hasProfile) setMessage("メンバー欄に登録されたメールアドレスでログインしてください。");
   }
 
   async function signIn(formData: FormData) {
@@ -1042,6 +1058,10 @@ function buildCalendarCells(monthStart: Date) {
       inMonth: date.getMonth() === monthStart.getMonth()
     };
   });
+}
+
+function lower(value: string | null | undefined) {
+  return (value ?? "").toLowerCase();
 }
 
 function memberName(members: Member[], memberId: string) {
