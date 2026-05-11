@@ -34,6 +34,31 @@ export type EventItem = {
   ends_at: string | null;
   location: string | null;
   notes: string | null;
+  allow_muted_participation: boolean;
+};
+
+export type SchedulePoll = {
+  id: string;
+  band_id: string;
+  title: string;
+  kind: "rehearsal" | "live" | "recording" | "meeting" | "other";
+  note: string | null;
+  allow_muted_participation: boolean;
+  status: "open" | "closed";
+  created_by: string | null;
+  created_at: string;
+};
+
+export type AvailabilitySlot = {
+  id: string;
+  poll_id: string;
+  band_id: string;
+  member_id: string;
+  starts_at: string;
+  ends_at: string;
+  can_join_muted: boolean;
+  note: string | null;
+  created_at: string;
 };
 
 export type TaskItem = {

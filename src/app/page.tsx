@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { Band, EventItem, MeetingMinute, Member, MoneyItem, supabase, TaskItem } from "@/lib/supabase";
+import { AvailabilitySlot, Band, EventItem, MeetingMinute, Member, MoneyItem, SchedulePoll, supabase, TaskItem } from "@/lib/supabase";
 
 type Tab = "home" | "schedule" | "tasks" | "minutes" | "money" | "members";
 type ViewState = "loading" | "auth" | "setup" | "app";
@@ -34,6 +34,8 @@ export default function Home() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [money, setMoney] = useState<MoneyItem[]>([]);
   const [minutes, setMinutes] = useState<MeetingMinute[]>([]);
+  const [polls, setPolls] = useState<SchedulePoll[]>([]);
+  const [availability, setAvailability] = useState<AvailabilitySlot[]>([]);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -92,12 +94,14 @@ export default function Home() {
   }
 
   async function loadBandData(bandId: string, userId: string) {
-    const [memberResult, eventResult, taskResult, moneyResult, minutesResult] = await Promise.all([
+    const [memberResult, eventResult, taskResult, moneyResult, minutesResult, pollResult, availabilityResult] = await Promise.all([
       supabase.from("stm_members").select("*").eq("band_id", bandId).order("created_at"),
       supabase.from("stm_events").select("*").eq("band_id", bandId).order("starts_at"),
       supabase.from("stm_tasks").select("*").eq("band_id", bandId).order("created_at", { ascending: false }),
       supabase.from("stm_transactions").select("*").eq("band_id", bandId).order("occurred_on", { ascending: false }),
-      supabase.from("stm_meeting_minutes").select("*").eq("band_id", bandId).order("created_at", { ascending: false })
+      supabase.from("stm_meeting_minutes").select("*").eq("band_id", bandId).order("created_at", { ascending: false }),
+      supabase.from("stm_schedule_polls").select("*").eq("band_id", bandId).eq("status", "open").order("created_at", { ascending: false }),
+      supabase.from("stm_availability_slots").select("*").eq("band_id", bandId).order("starts_at", { ascending: true })
     ]);
 
     setMembers((memberResult.data ?? []) as Member[]);
@@ -105,6 +109,8 @@ export default function Home() {
     setTasks((taskResult.data ?? []) as TaskItem[]);
     setMoney((moneyResult.data ?? []) as MoneyItem[]);
     setMinutes((minutesResult.data ?? []) as MeetingMinute[]);
+    setPolls((pollResult.data ?? []) as SchedulePoll[]);
+    setAvailability((availabilityResult.data ?? []) as AvailabilitySlot[]);
 
     const hasProfile = (memberResult.data ?? []).some((member) => member.user_id === userId);
     if (!hasProfile) setMessage("このバンドのメンバー情報を確認できませんでした。");
@@ -174,7 +180,53 @@ export default function Home() {
       title: String(formData.get("title")),
       kind: String(formData.get("kind")),
       starts_at: new Date(String(formData.get("startsAt"))).toISOString(),
-      location: String(formData.get("location") ?? "")
+      location: String(formData.get("location") ?? ""),
+      allow_muted_participation: formData.get("allowMuted") === "on"
+    });
+    await loadBandData(band.id, session!.user.id);
+  }
+
+  async function addSchedulePoll(formData: FormData) {
+    if (!band) return;
+    await supabase.from("stm_schedule_polls").insert({
+      band_id: band.id,
+      title: String(formData.get("title")),
+      kind: String(formData.get("kind")),
+      note: String(formData.get("note") || ""),
+      allow_muted_participation: formData.get("allowMuted") === "on"
+    });
+    await loadBandData(band.id, session!.user.id);
+  }
+
+  async function addAvailability(formData: FormData) {
+    if (!band || !myMember) {
+      setMessage("先に自分のメンバー情報を登録してください。");
+      return;
+    }
+
+    await supabase.from("stm_availability_slots").insert({
+      band_id: band.id,
+      poll_id: String(formData.get("pollId")),
+      member_id: myMember.id,
+      starts_at: new Date(String(formData.get("startsAt"))).toISOString(),
+      ends_at: new Date(String(formData.get("endsAt"))).toISOString(),
+      can_join_muted: formData.get("canJoinMuted") === "on",
+      note: String(formData.get("note") || "")
+    });
+    await loadBandData(band.id, session!.user.id);
+  }
+
+  async function scheduleCandidate(formData: FormData) {
+    if (!band) return;
+    await supabase.from("stm_events").insert({
+      band_id: band.id,
+      title: String(formData.get("title")),
+      kind: String(formData.get("kind")),
+      starts_at: String(formData.get("startsAt")),
+      ends_at: String(formData.get("endsAt")),
+      location: String(formData.get("location") || "調整済み"),
+      notes: String(formData.get("notes") || ""),
+      allow_muted_participation: formData.get("allowMuted") === "true"
     });
     await loadBandData(band.id, session!.user.id);
   }
@@ -269,10 +321,17 @@ export default function Home() {
         )}
 
         {tab === "schedule" && (
-          <Panel title="予定を追加">
-            <EventForm action={addEvent} />
-            <Timeline events={events} />
-          </Panel>
+          <>
+            <Panel title="日程調整">
+              <SchedulePollForm action={addSchedulePoll} />
+              <AvailabilityForm action={addAvailability} polls={polls} />
+              <SchedulePollList polls={polls} availability={availability} members={members} onSchedule={scheduleCandidate} />
+            </Panel>
+            <Panel title="確定予定">
+              <EventForm action={addEvent} />
+              <Timeline events={events} />
+            </Panel>
+          </>
         )}
 
         {tab === "tasks" && (
@@ -393,6 +452,101 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   return <section><SectionTitle title={title} />{children}</section>;
 }
 
+function SchedulePollForm({ action }: { action: (formData: FormData) => void }) {
+  return (
+    <form action={action} className="quickForm pollForm">
+      <input name="title" placeholder="調整名 例: 6月リハ候補" required />
+      <select name="kind" defaultValue="rehearsal">
+        <option value="rehearsal">練習</option>
+        <option value="live">ライブ</option>
+        <option value="meeting">会議</option>
+        <option value="recording">録音</option>
+        <option value="other">その他</option>
+      </select>
+      <label className="checkLine">
+        <input name="allowMuted" type="checkbox" />
+        オンライン会議はミュート参加可
+      </label>
+      <textarea name="note" placeholder="補足 例: 2時間、スタジオ未定、オンライン可" />
+      <button>調整を作成</button>
+    </form>
+  );
+}
+
+function AvailabilityForm({ action, polls }: { action: (formData: FormData) => void; polls: SchedulePoll[] }) {
+  return (
+    <form action={action} className="quickForm availabilityForm">
+      <select name="pollId" required defaultValue="">
+        <option value="" disabled>調整を選択</option>
+        {polls.map((poll) => <option key={poll.id} value={poll.id}>{poll.title}</option>)}
+      </select>
+      <input name="startsAt" type="datetime-local" required />
+      <input name="endsAt" type="datetime-local" required />
+      <label className="checkLine">
+        <input name="canJoinMuted" type="checkbox" />
+        この時間はミュート参加なら可
+      </label>
+      <input name="note" placeholder="メモ 例: 20時以降なら確実" />
+      <button>自分の空き時間を追加</button>
+    </form>
+  );
+}
+
+function SchedulePollList({
+  polls,
+  availability,
+  members,
+  onSchedule
+}: {
+  polls: SchedulePoll[];
+  availability: AvailabilitySlot[];
+  members: Member[];
+  onSchedule: (formData: FormData) => void;
+}) {
+  if (!polls.length) return <p className="emptyText">会議、ライブ、練習の日程調整を作ると、ここに候補が並びます。</p>;
+
+  return (
+    <div className="list">
+      {polls.map((poll) => {
+        const pollSlots = availability.filter((slot) => slot.poll_id === poll.id);
+        const candidates = buildCandidates(pollSlots);
+        return (
+          <article className="pollCard" key={poll.id}>
+            <div className="pollHeader">
+              <div>
+                <span>{kindLabels[poll.kind]}</span>
+                <h3>{poll.title}</h3>
+              </div>
+              {poll.allow_muted_participation && <small>ミュート可</small>}
+            </div>
+            {poll.note && <p>{poll.note}</p>}
+            <div className="candidateList">
+              {candidates.length ? candidates.map((candidate) => (
+                <div className="candidate" key={candidate.key}>
+                  <div>
+                    <strong>{formatDateRange(candidate.startsAt, candidate.endsAt)}</strong>
+                    <p>{candidate.members.map((memberId) => memberName(members, memberId)).join("、")}</p>
+                    {candidate.mutedCount > 0 && <small>ミュート参加可 {candidate.mutedCount}人</small>}
+                  </div>
+                  <form action={onSchedule}>
+                    <input name="title" type="hidden" value={poll.title} />
+                    <input name="kind" type="hidden" value={poll.kind} />
+                    <input name="startsAt" type="hidden" value={candidate.startsAt} />
+                    <input name="endsAt" type="hidden" value={candidate.endsAt} />
+                    <input name="allowMuted" type="hidden" value={String(poll.allow_muted_participation)} />
+                    <input name="notes" type="hidden" value={`日程調整から作成 / 参加可: ${candidate.members.map((memberId) => memberName(members, memberId)).join("、")}`} />
+                    <button>予定化</button>
+                  </form>
+                </div>
+              )) : <p className="emptyText">まだ空き時間が入力されていません。</p>}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function EventForm({ action }: { action: (formData: FormData) => void }) {
   return (
     <form action={action} className="quickForm">
@@ -405,6 +559,10 @@ function EventForm({ action }: { action: (formData: FormData) => void }) {
       </select>
       <input name="startsAt" type="datetime-local" required />
       <input name="location" placeholder="場所" />
+      <label className="checkLine">
+        <input name="allowMuted" type="checkbox" />
+        オンライン会議はミュート参加可
+      </label>
       <button>追加</button>
     </form>
   );
@@ -482,7 +640,7 @@ function Timeline({ events }: { events: EventItem[] }) {
           <time>{formatShortDate(event.starts_at)}</time>
           <div>
             <strong>{event.title}</strong>
-            <p>{kindLabels[event.kind]} / {event.location || "場所未定"}</p>
+            <p>{kindLabels[event.kind]} / {event.location || "場所未定"}{event.allow_muted_participation ? " / ミュート参加可" : ""}</p>
           </div>
         </article>
       ))}
@@ -574,10 +732,34 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("ja-JP", { month: "short", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
+function formatDateRange(start: string, end: string) {
+  const startText = formatDate(start);
+  const endText = new Intl.DateTimeFormat("ja-JP", { hour: "2-digit", minute: "2-digit" }).format(new Date(end));
+  return `${startText} - ${endText}`;
+}
+
 function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric" }).format(new Date(value));
 }
 
 function yen(value: number) {
   return new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 }).format(value);
+}
+
+function memberName(members: Member[], memberId: string) {
+  return members.find((member) => member.id === memberId)?.display_name ?? "未登録メンバー";
+}
+
+function buildCandidates(slots: AvailabilitySlot[]) {
+  const grouped = slots.reduce<Record<string, { startsAt: string; endsAt: string; members: Set<string>; mutedCount: number }>>((acc, slot) => {
+    const key = `${slot.starts_at}_${slot.ends_at}`;
+    acc[key] ??= { startsAt: slot.starts_at, endsAt: slot.ends_at, members: new Set<string>(), mutedCount: 0 };
+    if (!acc[key].members.has(slot.member_id) && slot.can_join_muted) acc[key].mutedCount += 1;
+    acc[key].members.add(slot.member_id);
+    return acc;
+  }, {});
+
+  return Object.entries(grouped)
+    .map(([key, value]) => ({ key, startsAt: value.startsAt, endsAt: value.endsAt, members: Array.from(value.members), mutedCount: value.mutedCount }))
+    .sort((a, b) => b.members.length - a.members.length || new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 }

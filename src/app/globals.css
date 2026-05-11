@@ -103,7 +103,8 @@ h1 {
 .row,
 .taskRow,
 .quickForm,
-.minuteCard {
+.minuteCard,
+.pollCard {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -276,6 +277,36 @@ h1 {
   grid-column: 1 / -1;
 }
 
+.pollForm select,
+.availabilityForm select,
+.availabilityForm input[name="note"] {
+  grid-column: 1 / -1;
+}
+
+.checkLine {
+  min-height: 42px;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 11px;
+  background: white;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.checkLine input {
+  width: 17px;
+  height: 17px;
+  min-width: 17px;
+  border: 0;
+  padding: 0;
+  accent-color: var(--teal);
+}
+
 .quickForm input:first-child {
   grid-column: 1 / -1;
 }
@@ -415,6 +446,84 @@ h1 {
   display: block;
   margin-bottom: 4px;
   font-size: 12px;
+}
+
+.pollCard {
+  padding: 14px;
+}
+
+.pollHeader,
+.candidate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pollHeader {
+  margin-bottom: 8px;
+}
+
+.pollHeader span,
+.candidate small {
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pollHeader h3 {
+  margin: 2px 0 0;
+  font-size: 16px;
+}
+
+.pollHeader small {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pollCard > p,
+.candidate p,
+.emptyText {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.candidateList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.candidate {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.candidate strong,
+.candidate p,
+.candidate small {
+  display: block;
+}
+
+.candidate form {
+  flex: 0 0 auto;
+}
+
+.candidate button {
+  min-width: 64px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: white;
+  font-weight: 800;
 }
 
 .authScreen {
