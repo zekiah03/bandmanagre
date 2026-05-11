@@ -1,0 +1,58 @@
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Missing Supabase environment variables.");
+}
+
+export const supabase = createClient(supabaseUrl, supabaseKey);
+
+export type Member = {
+  id: string;
+  band_id: string;
+  user_id: string | null;
+  email: string | null;
+  display_name: string;
+  instrument: string | null;
+  role: "admin" | "member";
+};
+
+export type Band = {
+  id: string;
+  name: string;
+  created_by: string;
+};
+
+export type EventItem = {
+  id: string;
+  band_id: string;
+  title: string;
+  kind: "rehearsal" | "live" | "recording" | "meeting" | "other";
+  starts_at: string;
+  ends_at: string | null;
+  location: string | null;
+  notes: string | null;
+};
+
+export type TaskItem = {
+  id: string;
+  band_id: string;
+  title: string;
+  description: string | null;
+  assignee_member_id: string | null;
+  due_date: string | null;
+  status: "todo" | "doing" | "done";
+};
+
+export type MoneyItem = {
+  id: string;
+  band_id: string;
+  kind: "income" | "expense";
+  category: string;
+  title: string;
+  amount: number;
+  occurred_on: string;
+  memo: string | null;
+};
