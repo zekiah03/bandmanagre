@@ -28,7 +28,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -101,7 +102,8 @@ h1 {
 .metricGrid > div,
 .row,
 .taskRow,
-.quickForm {
+.quickForm,
+.minuteCard {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -252,6 +254,7 @@ h1 {
 
 .quickForm input,
 .quickForm select,
+.quickForm textarea,
 .formCard input {
   min-width: 0;
   height: 42px;
@@ -260,6 +263,17 @@ h1 {
   padding: 0 11px;
   background: white;
   color: var(--text);
+}
+
+.quickForm textarea {
+  min-height: 86px;
+  grid-column: 1 / -1;
+  padding: 10px 11px;
+  resize: vertical;
+}
+
+.minuteForm select {
+  grid-column: 1 / -1;
 }
 
 .quickForm input:first-child {
@@ -325,7 +339,7 @@ h1 {
   width: min(100vw, 430px);
   transform: translateX(-50%);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 2px;
   padding: 8px 8px max(8px, env(safe-area-inset-bottom));
   background: rgba(255, 255, 255, 0.96);
@@ -340,7 +354,7 @@ h1 {
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
 }
 
@@ -353,6 +367,54 @@ h1 {
 .tabs .active {
   background: var(--teal-soft);
   color: var(--teal);
+}
+
+.minuteCard {
+  padding: 14px;
+}
+
+.minuteMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.minuteMeta span {
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.minuteMeta small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.minuteCard h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.minuteCard p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.minuteCard div + div {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.minuteCard strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
 }
 
 .authScreen {

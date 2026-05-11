@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { Band, EventItem, Member, MoneyItem, supabase, TaskItem } from "@/lib/supabase";
+import { Band, EventItem, MeetingMinute, Member, MoneyItem, supabase, TaskItem } from "@/lib/supabase";
 
-type Tab = "home" | "schedule" | "tasks" | "money" | "members";
+type Tab = "home" | "schedule" | "tasks" | "minutes" | "money" | "members";
 type ViewState = "loading" | "auth" | "setup" | "app";
 
 const tabs: Array<{ id: Tab; label: string; icon: string }> = [
   { id: "home", label: "ホーム", icon: "⌂" },
   { id: "schedule", label: "予定", icon: "◇" },
   { id: "tasks", label: "タスク", icon: "✓" },
+  { id: "minutes", label: "議事録", icon: "□" },
   { id: "money", label: "会計", icon: "¥" },
   { id: "members", label: "メンバー", icon: "◎" }
 ];
@@ -32,6 +33,7 @@ export default function Home() {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [money, setMoney] = useState<MoneyItem[]>([]);
+  const [minutes, setMinutes] = useState<MeetingMinute[]>([]);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -90,17 +92,19 @@ export default function Home() {
   }
 
   async function loadBandData(bandId: string, userId: string) {
-    const [memberResult, eventResult, taskResult, moneyResult] = await Promise.all([
+    const [memberResult, eventResult, taskResult, moneyResult, minutesResult] = await Promise.all([
       supabase.from("stm_members").select("*").eq("band_id", bandId).order("created_at"),
       supabase.from("stm_events").select("*").eq("band_id", bandId).order("starts_at"),
       supabase.from("stm_tasks").select("*").eq("band_id", bandId).order("created_at", { ascending: false }),
-      supabase.from("stm_transactions").select("*").eq("band_id", bandId).order("occurred_on", { ascending: false })
+      supabase.from("stm_transactions").select("*").eq("band_id", bandId).order("occurred_on", { ascending: false }),
+      supabase.from("stm_meeting_minutes").select("*").eq("band_id", bandId).order("created_at", { ascending: false })
     ]);
 
     setMembers((memberResult.data ?? []) as Member[]);
     setEvents((eventResult.data ?? []) as EventItem[]);
     setTasks((taskResult.data ?? []) as TaskItem[]);
     setMoney((moneyResult.data ?? []) as MoneyItem[]);
+    setMinutes((minutesResult.data ?? []) as MeetingMinute[]);
 
     const hasProfile = (memberResult.data ?? []).some((member) => member.user_id === userId);
     if (!hasProfile) setMessage("このバンドのメンバー情報を確認できませんでした。");
@@ -206,6 +210,20 @@ export default function Home() {
     await loadBandData(band.id, session!.user.id);
   }
 
+  async function addMinute(formData: FormData) {
+    if (!band) return;
+    await supabase.from("stm_meeting_minutes").insert({
+      band_id: band.id,
+      event_id: String(formData.get("eventId") || "") || null,
+      title: String(formData.get("title")),
+      body: String(formData.get("body")),
+      decisions: String(formData.get("decisions") || ""),
+      action_items: String(formData.get("actionItems") || ""),
+      next_steps: String(formData.get("nextSteps") || "")
+    });
+    await loadBandData(band.id, session!.user.id);
+  }
+
   async function addMember(formData: FormData) {
     if (!band) return;
     await supabase.from("stm_members").insert({
@@ -261,6 +279,13 @@ export default function Home() {
           <Panel title="やる事リスト">
             <TaskForm action={addTask} members={members} />
             <TaskList tasks={tasks} members={members} onToggle={toggleTask} />
+          </Panel>
+        )}
+
+        {tab === "minutes" && (
+          <Panel title="議事録保管">
+            <MinuteForm action={addMinute} events={events} />
+            <MinuteList minutes={minutes} events={events} />
           </Panel>
         )}
 
@@ -415,6 +440,29 @@ function MoneyForm({ action }: { action: (formData: FormData) => void }) {
   );
 }
 
+function MinuteForm({ action, events }: { action: (formData: FormData) => void; events: EventItem[] }) {
+  const meetingEvents = events.filter((event) => event.kind === "meeting");
+
+  return (
+    <form action={action} className="quickForm minuteForm">
+      <input name="title" placeholder="議事録タイトル" required />
+      <select name="eventId" defaultValue="">
+        <option value="">会議予定に紐づけない</option>
+        {meetingEvents.map((event) => (
+          <option key={event.id} value={event.id}>
+            {formatShortDate(event.starts_at)} {event.title}
+          </option>
+        ))}
+      </select>
+      <textarea name="body" placeholder="話した内容" required />
+      <textarea name="decisions" placeholder="決定事項" />
+      <textarea name="actionItems" placeholder="担当タスク・宿題" />
+      <textarea name="nextSteps" placeholder="次回までに確認すること" />
+      <button>議事録を保存</button>
+    </form>
+  );
+}
+
 function MemberForm({ action }: { action: (formData: FormData) => void }) {
   return (
     <form action={action} className="quickForm">
@@ -480,6 +528,44 @@ function MoneyList({ items }: { items: MoneyItem[] }) {
           <b className={item.kind}>{item.kind === "income" ? "+" : "-"}{yen(item.amount)}</b>
         </article>
       ))}
+    </div>
+  );
+}
+
+function MinuteList({ minutes, events }: { minutes: MeetingMinute[]; events: EventItem[] }) {
+  return (
+    <div className="list">
+      {minutes.map((minute) => {
+        const event = events.find((item) => item.id === minute.event_id);
+        return (
+          <article className="minuteCard" key={minute.id}>
+            <div className="minuteMeta">
+              <span>{event ? formatShortDate(event.starts_at) : formatShortDate(minute.created_at)}</span>
+              <small>{event?.title ?? "単独メモ"}</small>
+            </div>
+            <h3>{minute.title}</h3>
+            <p>{minute.body}</p>
+            {minute.decisions && (
+              <div>
+                <strong>決定事項</strong>
+                <p>{minute.decisions}</p>
+              </div>
+            )}
+            {minute.action_items && (
+              <div>
+                <strong>担当・宿題</strong>
+                <p>{minute.action_items}</p>
+              </div>
+            )}
+            {minute.next_steps && (
+              <div>
+                <strong>次回まで</strong>
+                <p>{minute.next_steps}</p>
+              </div>
+            )}
+          </article>
+        );
+      })}
     </div>
   );
 }

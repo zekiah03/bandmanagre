@@ -56,3 +56,17 @@ export type MoneyItem = {
   occurred_on: string;
   memo: string | null;
 };
+
+export type MeetingMinute = {
+  id: string;
+  band_id: string;
+  event_id: string | null;
+  title: string;
+  body: string;
+  decisions: string | null;
+  action_items: string | null;
+  next_steps: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
