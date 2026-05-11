@@ -288,6 +288,118 @@ export default function Home() {
     await loadBandData(band.id, session!.user.id);
   }
 
+  async function deleteRecord(table: string, id: string) {
+    if (!band || !window.confirm("この入力を削除しますか？")) return;
+    await supabase.from(table).delete().eq("id", id);
+    await loadBandData(band.id, session!.user.id);
+  }
+
+  async function editEvent(event: EventItem) {
+    if (!band) return;
+    const title = window.prompt("予定名", event.title);
+    if (title === null) return;
+    const startsAt = window.prompt("開始日時", toDateTimeLocal(event.starts_at));
+    if (startsAt === null) return;
+    const location = window.prompt("場所", event.location ?? "");
+    if (location === null) return;
+    const allowMuted = window.confirm("オンライン会議はミュート参加可にしますか？");
+    await supabase.from("stm_events").update({
+      title,
+      starts_at: new Date(startsAt).toISOString(),
+      location,
+      allow_muted_participation: allowMuted
+    }).eq("id", event.id);
+    await loadBandData(band.id, session!.user.id);
+  }
+
+  async function editSchedulePoll(poll: SchedulePoll) {
+    if (!band) return;
+    const title = window.prompt("調整名", poll.title);
+    if (title === null) return;
+    const note = window.prompt("補足", poll.note ?? "");
+    if (note === null) return;
+    const allowMuted = window.confirm("オンライン会議はミュート参加可にしますか？");
+    await supabase.from("stm_schedule_polls").update({ title, note, allow_muted_participation: allowMuted }).eq("id", poll.id);
+    await loadBandData(band.id, session!.user.id);
+  }
+
+  async function editAvailability(slot: AvailabilitySlot) {
+    if (!band) return;
+    const startsAt = window.prompt("開始日時", toDateTimeLocal(slot.starts_at));
+    if (startsAt === null) return;
+    const endsAt = window.prompt("終了日時", toDateTimeLocal(slot.ends_at));
+    if (endsAt === null) return;
+    const note = window.prompt("メモ", slot.note ?? "");
+    if (note === null) return;
+    const canJoinMuted = window.confirm("この時間はミュート参加なら可にしますか？");
+    await supabase.from("stm_availability_slots").update({
+      starts_at: new Date(startsAt).toISOString(),
+      ends_at: new Date(endsAt).toISOString(),
+      note,
+      can_join_muted: canJoinMuted
+    }).eq("id", slot.id);
+    await loadBandData(band.id, session!.user.id);
+  }
+
+  async function editTask(task: TaskItem) {
+    if (!band) return;
+    const title = window.prompt("やる事", task.title);
+    if (title === null) return;
+    const dueDate = window.prompt("期限 yyyy-mm-dd", task.due_date ?? "");
+    if (dueDate === null) return;
+    await supabase.from("stm_tasks").update({ title, due_date: dueDate || null }).eq("id", task.id);
+    await loadBandData(band.id, session!.user.id);
+  }
+
+  async function editMoney(item: MoneyItem) {
+    if (!band) return;
+    const title = window.prompt("内容", item.title);
+    if (title === null) return;
+    const amount = window.prompt("金額", String(item.amount));
+    if (amount === null) return;
+    const category = window.prompt("カテゴリ", item.category);
+    if (category === null) return;
+    const occurredOn = window.prompt("日付 yyyy-mm-dd", item.occurred_on);
+    if (occurredOn === null) return;
+    await supabase.from("stm_transactions").update({ title, amount: Number(amount || 0), category, occurred_on: occurredOn }).eq("id", item.id);
+    await loadBandData(band.id, session!.user.id);
+  }
+
+  async function editMinute(minute: MeetingMinute) {
+    if (!band) return;
+    const title = window.prompt("議事録タイトル", minute.title);
+    if (title === null) return;
+    const body = window.prompt("話した内容", minute.body);
+    if (body === null) return;
+    const decisions = window.prompt("決定事項", minute.decisions ?? "");
+    if (decisions === null) return;
+    const actionItems = window.prompt("担当・宿題", minute.action_items ?? "");
+    if (actionItems === null) return;
+    const nextSteps = window.prompt("次回まで", minute.next_steps ?? "");
+    if (nextSteps === null) return;
+    await supabase.from("stm_meeting_minutes").update({
+      title,
+      body,
+      decisions,
+      action_items: actionItems,
+      next_steps: nextSteps,
+      updated_at: new Date().toISOString()
+    }).eq("id", minute.id);
+    await loadBandData(band.id, session!.user.id);
+  }
+
+  async function editMember(member: Member) {
+    if (!band) return;
+    const displayName = window.prompt("名前", member.display_name);
+    if (displayName === null) return;
+    const instrument = window.prompt("パート", member.instrument ?? "");
+    if (instrument === null) return;
+    const email = window.prompt("メール", member.email ?? "");
+    if (email === null) return;
+    await supabase.from("stm_members").update({ display_name: displayName, instrument, email }).eq("id", member.id);
+    await loadBandData(band.id, session!.user.id);
+  }
+
   if (view === "loading") return <Shell><Loading /></Shell>;
   if (view === "auth") return <AuthScreen message={message} signIn={signIn} signUp={signUp} />;
   if (view === "setup") return <SetupScreen message={message} createBand={createBand} />;
@@ -316,7 +428,7 @@ export default function Home() {
             </section>
             <MetricGrid finance={finance} tasks={tasks} events={events} />
             <SectionTitle title="自分のタスク" action={`${myTasks.filter((task) => task.status !== "done").length}件`} />
-            <TaskList tasks={myTasks.slice(0, 4)} members={members} onToggle={toggleTask} />
+            <TaskList tasks={myTasks.slice(0, 4)} members={members} onToggle={toggleTask} onEdit={editTask} onDelete={(task) => deleteRecord("stm_tasks", task.id)} />
           </>
         )}
 
@@ -325,11 +437,20 @@ export default function Home() {
             <Panel title="日程調整">
               <SchedulePollForm action={addSchedulePoll} />
               <AvailabilityForm action={addAvailability} polls={polls} />
-              <SchedulePollList polls={polls} availability={availability} members={members} onSchedule={scheduleCandidate} />
+              <SchedulePollList
+                polls={polls}
+                availability={availability}
+                members={members}
+                onSchedule={scheduleCandidate}
+                onEditPoll={editSchedulePoll}
+                onDeletePoll={(poll) => deleteRecord("stm_schedule_polls", poll.id)}
+                onEditAvailability={editAvailability}
+                onDeleteAvailability={(slot) => deleteRecord("stm_availability_slots", slot.id)}
+              />
             </Panel>
             <Panel title="確定予定">
               <EventForm action={addEvent} />
-              <Timeline events={events} />
+              <Timeline events={events} onEdit={editEvent} onDelete={(event) => deleteRecord("stm_events", event.id)} />
             </Panel>
           </>
         )}
@@ -337,14 +458,14 @@ export default function Home() {
         {tab === "tasks" && (
           <Panel title="やる事リスト">
             <TaskForm action={addTask} members={members} />
-            <TaskList tasks={tasks} members={members} onToggle={toggleTask} />
+            <TaskList tasks={tasks} members={members} onToggle={toggleTask} onEdit={editTask} onDelete={(task) => deleteRecord("stm_tasks", task.id)} />
           </Panel>
         )}
 
         {tab === "minutes" && (
           <Panel title="議事録保管">
             <MinuteForm action={addMinute} events={events} />
-            <MinuteList minutes={minutes} events={events} />
+            <MinuteList minutes={minutes} events={events} onEdit={editMinute} onDelete={(minute) => deleteRecord("stm_meeting_minutes", minute.id)} />
           </Panel>
         )}
 
@@ -352,7 +473,7 @@ export default function Home() {
           <Panel title="資金管理">
             <FinanceCard finance={finance} />
             <MoneyForm action={addMoney} />
-            <MoneyList items={money} />
+            <MoneyList items={money} onEdit={editMoney} onDelete={(item) => deleteRecord("stm_transactions", item.id)} />
           </Panel>
         )}
 
@@ -367,6 +488,7 @@ export default function Home() {
                     <strong>{member.display_name}</strong>
                     <p>{member.instrument || "パート未設定"} / {member.role}</p>
                   </div>
+                  <ActionButtons onEdit={() => editMember(member)} onDelete={() => deleteRecord("stm_members", member.id)} />
                 </article>
               ))}
             </div>
@@ -496,12 +618,20 @@ function SchedulePollList({
   polls,
   availability,
   members,
-  onSchedule
+  onSchedule,
+  onEditPoll,
+  onDeletePoll,
+  onEditAvailability,
+  onDeleteAvailability
 }: {
   polls: SchedulePoll[];
   availability: AvailabilitySlot[];
   members: Member[];
   onSchedule: (formData: FormData) => void;
+  onEditPoll: (poll: SchedulePoll) => void;
+  onDeletePoll: (poll: SchedulePoll) => void;
+  onEditAvailability: (slot: AvailabilitySlot) => void;
+  onDeleteAvailability: (slot: AvailabilitySlot) => void;
 }) {
   if (!polls.length) return <p className="emptyText">会議、ライブ、練習の日程調整を作ると、ここに候補が並びます。</p>;
 
@@ -517,7 +647,10 @@ function SchedulePollList({
                 <span>{kindLabels[poll.kind]}</span>
                 <h3>{poll.title}</h3>
               </div>
-              {poll.allow_muted_participation && <small>ミュート可</small>}
+              <div className="pollControls">
+                {poll.allow_muted_participation && <small>ミュート可</small>}
+                <ActionButtons onEdit={() => onEditPoll(poll)} onDelete={() => onDeletePoll(poll)} />
+              </div>
             </div>
             {poll.note && <p>{poll.note}</p>}
             <div className="candidateList">
@@ -540,6 +673,17 @@ function SchedulePollList({
                 </div>
               )) : <p className="emptyText">まだ空き時間が入力されていません。</p>}
             </div>
+            {pollSlots.length > 0 && (
+              <div className="slotList">
+                <strong>入力済みの空き時間</strong>
+                {pollSlots.map((slot) => (
+                  <div className="slotRow" key={slot.id}>
+                    <p>{memberName(members, slot.member_id)} / {formatDateRange(slot.starts_at, slot.ends_at)}{slot.can_join_muted ? " / ミュート可" : ""}</p>
+                    <ActionButtons onEdit={() => onEditAvailability(slot)} onDelete={() => onDeleteAvailability(slot)} />
+                  </div>
+                ))}
+              </div>
+            )}
           </article>
         );
       })}
@@ -632,7 +776,7 @@ function MemberForm({ action }: { action: (formData: FormData) => void }) {
   );
 }
 
-function Timeline({ events }: { events: EventItem[] }) {
+function Timeline({ events, onEdit, onDelete }: { events: EventItem[]; onEdit: (event: EventItem) => void; onDelete: (event: EventItem) => void }) {
   return (
     <div className="list">
       {events.map((event) => (
@@ -642,22 +786,36 @@ function Timeline({ events }: { events: EventItem[] }) {
             <strong>{event.title}</strong>
             <p>{kindLabels[event.kind]} / {event.location || "場所未定"}{event.allow_muted_participation ? " / ミュート参加可" : ""}</p>
           </div>
+          <ActionButtons onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} />
         </article>
       ))}
     </div>
   );
 }
 
-function TaskList({ tasks, members, onToggle }: { tasks: TaskItem[]; members: Member[]; onToggle: (task: TaskItem) => void }) {
+function TaskList({
+  tasks,
+  members,
+  onToggle,
+  onEdit,
+  onDelete
+}: {
+  tasks: TaskItem[];
+  members: Member[];
+  onToggle: (task: TaskItem) => void;
+  onEdit: (task: TaskItem) => void;
+  onDelete: (task: TaskItem) => void;
+}) {
   return (
     <div className="list">
       {tasks.map((task) => {
         const assignee = members.find((member) => member.id === task.assignee_member_id);
         return (
-          <button className={`taskRow ${task.status === "done" ? "done" : ""}`} key={task.id} onClick={() => onToggle(task)}>
-            <span className="check">{task.status === "done" ? "✓" : ""}</span>
+          <article className={`taskRow ${task.status === "done" ? "done" : ""}`} key={task.id}>
+            <button className="check" onClick={() => onToggle(task)} aria-label="完了切り替え">{task.status === "done" ? "✓" : ""}</button>
             <span><strong>{task.title}</strong><small>{assignee?.display_name ?? "全員"} / {task.due_date ?? "期限なし"}</small></span>
-          </button>
+            <ActionButtons onEdit={() => onEdit(task)} onDelete={() => onDelete(task)} />
+          </article>
         );
       })}
     </div>
@@ -674,7 +832,7 @@ function FinanceCard({ finance }: { finance: { income: number; expense: number; 
   );
 }
 
-function MoneyList({ items }: { items: MoneyItem[] }) {
+function MoneyList({ items, onEdit, onDelete }: { items: MoneyItem[]; onEdit: (item: MoneyItem) => void; onDelete: (item: MoneyItem) => void }) {
   return (
     <div className="list">
       {items.map((item) => (
@@ -684,13 +842,24 @@ function MoneyList({ items }: { items: MoneyItem[] }) {
             <p>{item.category} / {item.occurred_on}</p>
           </div>
           <b className={item.kind}>{item.kind === "income" ? "+" : "-"}{yen(item.amount)}</b>
+          <ActionButtons onEdit={() => onEdit(item)} onDelete={() => onDelete(item)} />
         </article>
       ))}
     </div>
   );
 }
 
-function MinuteList({ minutes, events }: { minutes: MeetingMinute[]; events: EventItem[] }) {
+function MinuteList({
+  minutes,
+  events,
+  onEdit,
+  onDelete
+}: {
+  minutes: MeetingMinute[];
+  events: EventItem[];
+  onEdit: (minute: MeetingMinute) => void;
+  onDelete: (minute: MeetingMinute) => void;
+}) {
   return (
     <div className="list">
       {minutes.map((minute) => {
@@ -701,6 +870,7 @@ function MinuteList({ minutes, events }: { minutes: MeetingMinute[]; events: Eve
               <span>{event ? formatShortDate(event.starts_at) : formatShortDate(minute.created_at)}</span>
               <small>{event?.title ?? "単独メモ"}</small>
             </div>
+            <ActionButtons onEdit={() => onEdit(minute)} onDelete={() => onDelete(minute)} />
             <h3>{minute.title}</h3>
             <p>{minute.body}</p>
             {minute.decisions && (
@@ -728,6 +898,15 @@ function MinuteList({ minutes, events }: { minutes: MeetingMinute[]; events: Eve
   );
 }
 
+function ActionButtons({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div className="actions">
+      <button type="button" onClick={onEdit}>編集</button>
+      <button type="button" className="dangerButton" onClick={onDelete}>削除</button>
+    </div>
+  );
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("ja-JP", { month: "short", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
@@ -744,6 +923,12 @@ function formatShortDate(value: string) {
 
 function yen(value: number) {
   return new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 }).format(value);
+}
+
+function toDateTimeLocal(value: string) {
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 function memberName(members: Member[], memberId: string) {

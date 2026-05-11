@@ -208,6 +208,14 @@ h1 {
   border: 0;
 }
 
+.row > div:not(.actions, .memberMark),
+.taskRow > span,
+.candidate > div,
+.slotRow p {
+  min-width: 0;
+  flex: 1;
+}
+
 .taskRow strong,
 .taskRow small {
   display: block;
@@ -224,10 +232,33 @@ h1 {
   flex: 0 0 24px;
   border: 2px solid var(--teal);
   border-radius: 50%;
+  background: white;
   color: var(--teal);
   display: grid;
   place-items: center;
   font-weight: 900;
+}
+
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+}
+
+.actions button {
+  min-width: 44px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.actions .dangerButton {
+  border-color: #f0c7c1;
+  color: var(--danger);
 }
 
 .eventRow time,
@@ -486,6 +517,13 @@ h1 {
   font-weight: 800;
 }
 
+.pollControls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .pollCard > p,
 .candidate p,
 .emptyText {
@@ -524,6 +562,29 @@ h1 {
   background: var(--surface-strong);
   color: white;
   font-weight: 800;
+}
+
+.slotList {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.slotList > strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.slotRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.slotRow + .slotRow {
+  border-top: 1px solid var(--line);
 }
 
 .authScreen {
