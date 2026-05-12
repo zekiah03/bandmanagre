@@ -89,6 +89,18 @@ h1 {
   font-weight: 800;
 }
 
+.memberSelect {
+  max-width: 118px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: white;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .screen {
   display: flex;
   flex-direction: column;

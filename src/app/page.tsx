@@ -1,11 +1,12 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Session, User } from "@supabase/supabase-js";
 import { AvailabilitySlot, Band, EventItem, MeetingMinute, Member, MoneyItem, SchedulePoll, supabase, TaskItem } from "@/lib/supabase";
 
 type Tab = "home" | "schedule" | "tasks" | "minutes" | "money" | "members";
 type ViewState = "loading" | "auth" | "setup" | "app";
+const APP_PASSWORD = "4471";
+const SHARED_LOGIN_EMAIL = "shinsei-manager@band.local";
 
 const tabs: Array<{ id: Tab; label: string; icon: string }> = [
   { id: "home", label: "ホーム", icon: "⌂" },
@@ -27,7 +28,6 @@ const kindLabels = {
 const weekLabels = ["日", "月", "火", "水", "木", "金", "土"];
 
 export default function Home() {
-  const [session, setSession] = useState<Session | null>(null);
   const [view, setView] = useState<ViewState>("loading");
   const [tab, setTab] = useState<Tab>("home");
   const [band, setBand] = useState<Band | null>(null);
@@ -39,28 +39,16 @@ export default function Home() {
   const [polls, setPolls] = useState<SchedulePoll[]>([]);
   const [availability, setAvailability] = useState<AvailabilitySlot[]>([]);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
+  const [selectedMemberId, setSelectedMemberId] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      if (!data.session) setView("auth");
-    });
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-      if (!currentSession) {
-        setView("auth");
-        setBand(null);
-      }
-    });
-
-    return () => authListener.subscription.unsubscribe();
+    const unlocked = window.sessionStorage.getItem("stm_unlocked") === "true";
+    const storedMemberId = window.localStorage.getItem("stm_member_id") ?? "";
+    setSelectedMemberId(storedMemberId);
+    if (unlocked) void loadBand(storedMemberId);
+    else setView("auth");
   }, []);
-
-  useEffect(() => {
-    if (session?.user) void loadBand(session.user);
-  }, [session]);
 
   const finance = useMemo(() => {
     const income = money.filter((item) => item.kind === "income").reduce((sum, item) => sum + item.amount, 0);
@@ -69,11 +57,25 @@ export default function Home() {
   }, [money]);
 
   const nextEvent = events[0];
-  const myMember = members.find((member) => member.user_id === session?.user.id || lower(member.email) === lower(session?.user.email));
+  const myMember = members.find((member) => member.id === selectedMemberId) ?? members[0];
   const myTasks = tasks.filter((task) => !task.assignee_member_id || task.assignee_member_id === myMember?.id);
 
-  async function loadBand(user: User) {
+  async function ensureSharedSession() {
+    const { data } = await supabase.auth.getSession();
+    if (data.session) return null;
+    const { error } = await supabase.auth.signInWithPassword({ email: SHARED_LOGIN_EMAIL, password: APP_PASSWORD });
+    return error;
+  }
+
+  async function loadBand(memberId = selectedMemberId) {
     setView("loading");
+    const authError = await ensureSharedSession();
+    if (authError) {
+      setMessage(authError.message);
+      setView("auth");
+      return;
+    }
+
     const { data: ownedBands, error: bandError } = await supabase
       .from("stm_bands")
       .select("*")
@@ -92,11 +94,11 @@ export default function Home() {
     }
 
     setBand(currentBand);
-    await loadBandData(currentBand.id, user.id);
+    await loadBandData(currentBand.id, memberId);
     setView("app");
   }
 
-  async function loadBandData(bandId: string, userId: string) {
+  async function loadBandData(bandId: string, memberId = selectedMemberId) {
     const [memberResult, eventResult, taskResult, moneyResult, minutesResult, pollResult, availabilityResult] = await Promise.all([
       supabase.from("stm_members").select("*").eq("band_id", bandId).order("created_at"),
       supabase.from("stm_events").select("*").eq("band_id", bandId).order("starts_at"),
@@ -107,64 +109,44 @@ export default function Home() {
       supabase.from("stm_availability_slots").select("*").eq("band_id", bandId).order("starts_at", { ascending: true })
     ]);
 
-    let loadedMembers = (memberResult.data ?? []) as Member[];
-    const invitedMember = loadedMembers.find((member) => !member.user_id && lower(member.email) === lower(session?.user.email));
-
-    if (invitedMember) {
-      const { data: claimedMember } = await supabase
-        .from("stm_members")
-        .update({ user_id: userId, email: session?.user.email ?? invitedMember.email })
-        .eq("id", invitedMember.id)
-        .select()
-        .single();
-
-      if (claimedMember) {
-        loadedMembers = loadedMembers.map((member) => member.id === invitedMember.id ? claimedMember as Member : member);
-      }
-    }
+    const loadedMembers = (memberResult.data ?? []) as Member[];
+    const activeMemberId = memberId || loadedMembers[0]?.id || "";
 
     setMembers(loadedMembers);
+    setSelectedMemberId(activeMemberId);
+    if (activeMemberId) window.localStorage.setItem("stm_member_id", activeMemberId);
     setEvents((eventResult.data ?? []) as EventItem[]);
     setTasks((taskResult.data ?? []) as TaskItem[]);
     setMoney((moneyResult.data ?? []) as MoneyItem[]);
     setMinutes((minutesResult.data ?? []) as MeetingMinute[]);
     setPolls((pollResult.data ?? []) as SchedulePoll[]);
     setAvailability((availabilityResult.data ?? []) as AvailabilitySlot[]);
-
-    const hasProfile = loadedMembers.some((member) => member.user_id === userId || lower(member.email) === lower(session?.user.email));
-    if (!hasProfile) setMessage("メンバー欄に登録されたメールアドレスでログインしてください。");
   }
 
-  async function signIn(formData: FormData) {
+  async function unlockApp(formData: FormData) {
     setMessage("");
-    const email = String(formData.get("email") ?? "");
     const password = String(formData.get("password") ?? "");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setMessage(error.message);
-  }
-
-  async function signUp(formData: FormData) {
-    setMessage("");
-    const email = String(formData.get("email") ?? "");
-    const password = String(formData.get("password") ?? "");
-    const displayName = String(formData.get("displayName") ?? "");
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { display_name: displayName } }
-    });
-    setMessage(error ? error.message : "登録メールを確認してください。確認後にログインできます。");
+    if (password !== APP_PASSWORD) {
+      setMessage("パスワードが違います。");
+      return;
+    }
+    const error = await ensureSharedSession();
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    window.sessionStorage.setItem("stm_unlocked", "true");
+    await loadBand();
   }
 
   async function createBand(formData: FormData) {
-    if (!session?.user) return;
     setMessage("");
     const displayName = String(formData.get("displayName") ?? "メンバー");
     const instrument = String(formData.get("instrument") ?? "");
 
     const { data: createdBand, error: bandError } = await supabase
       .from("stm_bands")
-      .insert({ name: "震星理論", created_by: session.user.id })
+      .insert({ name: "震星理論" })
       .select()
       .single();
 
@@ -175,8 +157,7 @@ export default function Home() {
 
     const { error: memberError } = await supabase.from("stm_members").insert({
       band_id: createdBand.id,
-      user_id: session.user.id,
-      email: session.user.email,
+      email: "",
       display_name: displayName,
       instrument,
       role: "admin"
@@ -188,7 +169,7 @@ export default function Home() {
     }
 
     setBand(createdBand as Band);
-    await loadBandData(createdBand.id, session.user.id);
+    await loadBandData(createdBand.id);
     setView("app");
   }
 
@@ -202,7 +183,7 @@ export default function Home() {
       location: String(formData.get("location") ?? ""),
       allow_muted_participation: formData.get("allowMuted") === "on"
     });
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function addSchedulePoll(formData: FormData) {
@@ -214,7 +195,7 @@ export default function Home() {
       note: String(formData.get("note") || ""),
       allow_muted_participation: formData.get("allowMuted") === "on"
     });
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function addAvailability(formData: FormData) {
@@ -232,7 +213,7 @@ export default function Home() {
       can_join_muted: formData.get("canJoinMuted") === "on",
       note: String(formData.get("note") || "")
     });
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function scheduleCandidate(formData: FormData) {
@@ -247,7 +228,7 @@ export default function Home() {
       notes: String(formData.get("notes") || ""),
       allow_muted_participation: formData.get("allowMuted") === "true"
     });
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function addTask(formData: FormData) {
@@ -259,13 +240,13 @@ export default function Home() {
       due_date: String(formData.get("dueDate") || "") || null,
       status: "todo"
     });
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function toggleTask(task: TaskItem) {
     if (!band) return;
     await supabase.from("stm_tasks").update({ status: task.status === "done" ? "todo" : "done" }).eq("id", task.id);
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function addMoney(formData: FormData) {
@@ -278,7 +259,7 @@ export default function Home() {
       amount: Number(formData.get("amount") || 0),
       occurred_on: String(formData.get("date") || new Date().toISOString().slice(0, 10))
     });
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function addMinute(formData: FormData) {
@@ -292,7 +273,7 @@ export default function Home() {
       action_items: String(formData.get("actionItems") || ""),
       next_steps: String(formData.get("nextSteps") || "")
     });
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function addMember(formData: FormData) {
@@ -304,13 +285,13 @@ export default function Home() {
       instrument: String(formData.get("instrument") || ""),
       role: "member"
     });
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function deleteRecord(table: string, id: string) {
     if (!band || !window.confirm("この入力を削除しますか？")) return;
     await supabase.from(table).delete().eq("id", id);
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function editEvent(event: EventItem) {
@@ -328,7 +309,7 @@ export default function Home() {
       location,
       allow_muted_participation: allowMuted
     }).eq("id", event.id);
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function editSchedulePoll(poll: SchedulePoll) {
@@ -339,7 +320,7 @@ export default function Home() {
     if (note === null) return;
     const allowMuted = window.confirm("オンライン会議はミュート参加可にしますか？");
     await supabase.from("stm_schedule_polls").update({ title, note, allow_muted_participation: allowMuted }).eq("id", poll.id);
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function editAvailability(slot: AvailabilitySlot) {
@@ -357,7 +338,7 @@ export default function Home() {
       note,
       can_join_muted: canJoinMuted
     }).eq("id", slot.id);
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function editTask(task: TaskItem) {
@@ -367,7 +348,7 @@ export default function Home() {
     const dueDate = window.prompt("期限 yyyy-mm-dd", task.due_date ?? "");
     if (dueDate === null) return;
     await supabase.from("stm_tasks").update({ title, due_date: dueDate || null }).eq("id", task.id);
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function editMoney(item: MoneyItem) {
@@ -381,7 +362,7 @@ export default function Home() {
     const occurredOn = window.prompt("日付 yyyy-mm-dd", item.occurred_on);
     if (occurredOn === null) return;
     await supabase.from("stm_transactions").update({ title, amount: Number(amount || 0), category, occurred_on: occurredOn }).eq("id", item.id);
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function editMinute(minute: MeetingMinute) {
@@ -404,7 +385,7 @@ export default function Home() {
       next_steps: nextSteps,
       updated_at: new Date().toISOString()
     }).eq("id", minute.id);
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   async function editMember(member: Member) {
@@ -416,11 +397,11 @@ export default function Home() {
     const email = window.prompt("メール", member.email ?? "");
     if (email === null) return;
     await supabase.from("stm_members").update({ display_name: displayName, instrument, email }).eq("id", member.id);
-    await loadBandData(band.id, session!.user.id);
+    await loadBandData(band.id);
   }
 
   if (view === "loading") return <Shell><Loading /></Shell>;
-  if (view === "auth") return <AuthScreen message={message} signIn={signIn} signUp={signUp} />;
+  if (view === "auth") return <AuthScreen message={message} unlockApp={unlockApp} />;
   if (view === "setup") return <SetupScreen message={message} createBand={createBand} />;
 
   return (
@@ -430,7 +411,26 @@ export default function Home() {
           <p className="small">private band app</p>
           <h1>震星理論マネージャー</h1>
         </div>
-        <button className="avatar" onClick={() => supabase.auth.signOut()} aria-label="ログアウト">
+        <select
+          className="memberSelect"
+          value={myMember?.id ?? ""}
+          onChange={(event) => {
+            setSelectedMemberId(event.target.value);
+            window.localStorage.setItem("stm_member_id", event.target.value);
+          }}
+          aria-label="自分のメンバー名"
+        >
+          {members.map((member) => <option key={member.id} value={member.id}>{member.display_name}</option>)}
+        </select>
+        <button
+          className="avatar"
+          onClick={() => {
+            window.sessionStorage.removeItem("stm_unlocked");
+            void supabase.auth.signOut();
+            setView("auth");
+          }}
+          aria-label="ロック"
+        >
           {myMember?.display_name?.slice(0, 1) ?? "震"}
         </button>
       </header>
@@ -542,23 +542,16 @@ function Loading() {
   return <div className="center">読み込み中...</div>;
 }
 
-function AuthScreen({ message, signIn, signUp }: { message: string; signIn: (formData: FormData) => void; signUp: (formData: FormData) => void }) {
+function AuthScreen({ message, unlockApp }: { message: string; unlockApp: (formData: FormData) => void }) {
   return (
     <Shell>
       <main className="authScreen">
         <h1>震星理論マネージャー</h1>
         <p>バンドメンバーだけで予定、タスク、資金を共有するスマホ専用アプリ。</p>
         {message && <p className="notice">{message}</p>}
-        <form action={signIn} className="formCard">
-          <input name="email" type="email" placeholder="メール" required />
-          <input name="password" type="password" placeholder="パスワード" required />
-          <button className="primary">ログイン</button>
-        </form>
-        <form action={signUp} className="formCard soft">
-          <input name="displayName" placeholder="表示名" required />
-          <input name="email" type="email" placeholder="メール" required />
-          <input name="password" type="password" placeholder="パスワード" minLength={6} required />
-          <button>新規メンバー登録</button>
+        <form action={unlockApp} className="formCard">
+          <input name="password" type="password" inputMode="numeric" placeholder="共通パスワード" required />
+          <button className="primary">開く</button>
         </form>
       </main>
     </Shell>
